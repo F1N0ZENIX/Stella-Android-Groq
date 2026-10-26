@@ -4,6 +4,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +34,8 @@ class MainActivity : ComponentActivity() {
             var key by remember { mutableStateOf(prefs.getString("groq_key", "") ?: "") }
             var draft by remember { mutableStateOf("") }
             var busy by remember { mutableStateOf(false) }
+            var settings by remember { mutableStateOf(false) }
+            var model by remember { mutableStateOf(prefs.getString("model", "llama-3.1-8b-instant") ?: "llama-3.1-8b-instant") }
             var error by remember { mutableStateOf("") }
             val messages = remember { mutableStateListOf<Message>() }
             LaunchedEffect(Unit) {
@@ -49,9 +54,17 @@ class MainActivity : ComponentActivity() {
                 prefs.edit().putString("messages", arr.toString()).apply()
             }
             MaterialTheme(colorScheme = darkColorScheme(background = Color.Black, surface = Color(0xFF151515), primary = Color.White, onPrimary = Color.Black)) {
-                Column(Modifier.fillMaxSize().padding(16.dp)) {
-                    Text("STELLA / GROQ", style = MaterialTheme.typography.headlineMedium, color = Color.White)
-                    Text("Protótipo local • Groq online", color = Color.LightGray)
+                Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Stella", style = MaterialTheme.typography.headlineMedium, color = Color.White)
+                        TextButton(onClick = { settings = !settings }) { Text(if (settings) "Voltar" else "Configurações") }
+                    }
+                    if (settings) {
+                        Text("Modelo de IA", color = Color.White)
+                        listOf("llama-3.1-8b-instant", "openai/gpt-oss-20b", "openai/gpt-oss-120b").forEach { candidate ->
+                            Row { RadioButton(selected = model == candidate, onClick = { model = candidate; prefs.edit().putString("model", model).apply() }); Text(candidate, modifier = Modifier.padding(top = 12.dp)) }
+                        }
+                    }
                     Spacer(Modifier.height(12.dp))
                     OutlinedTextField(value = key, onValueChange = { key = it; prefs.edit().putString("groq_key", it).apply() }, label = { Text("Chave API Groq") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
                     Spacer(Modifier.height(8.dp))
@@ -77,7 +90,7 @@ class MainActivity : ComponentActivity() {
                             error = ""
                             scope.launch {
                                 try {
-                                    val reply = withContext(Dispatchers.IO) { askGroq(key, messages.toList()) }
+                                    val reply = withContext(Dispatchers.IO) { askGroq(key, model, messages.toList()) }
                                     messages.add(Message("assistant", reply))
                                     persist()
                                 } catch (e: Exception) { error = e.message ?: "Falha de conexão" }
@@ -91,7 +104,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun askGroq(key: String, messages: List<Message>): String {
+private fun askGroq(key: String, model: String, messages: List<Message>): String {
     val conn = URL("https://api.groq.com/openai/v1/chat/completions").openConnection() as HttpURLConnection
     try {
         conn.requestMethod = "POST"
@@ -103,7 +116,7 @@ private fun askGroq(key: String, messages: List<Message>): String {
         val history = JSONArray()
         history.put(JSONObject().put("role", "system").put("content", "Você é Stella, assistente pessoal em português brasileiro. Seja útil e clara. Não afirme ter criado lembretes ou executado ações externas."))
         messages.takeLast(20).forEach { history.put(JSONObject().put("role", it.role).put("content", it.content)) }
-        val payload = JSONObject().put("model", "llama-3.3-70b-versatile").put("messages", history)
+        val payload = JSONObject().put("model", model).put("messages", history)
         conn.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
         val code = conn.responseCode
         val response = (if (code in 200..299) conn.inputStream else conn.errorStream).bufferedReader().use { it.readText() }
