@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
             var draft by remember { mutableStateOf("") }
             var busy by remember { mutableStateOf(false) }
             var settings by remember { mutableStateOf(false) }
-            var model by remember { mutableStateOf(prefs.getString("model", "llama-3.1-8b-instant") ?: "llama-3.1-8b-instant") }
+            var model by remember { mutableStateOf(prefs.getString("model", "Automático") ?: "Automático") }
             var error by remember { mutableStateOf("") }
             val messages = remember { mutableStateListOf<Message>() }
             LaunchedEffect(Unit) {
@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
                     }
                     if (settings) {
                         Text("Modelo de IA", color = Color.White)
-                        listOf("llama-3.1-8b-instant", "openai/gpt-oss-20b", "openai/gpt-oss-120b").forEach { candidate ->
+                        listOf("Automático", "llama-3.1-8b-instant", "openai/gpt-oss-20b", "openai/gpt-oss-120b").forEach { candidate ->
                             Row { RadioButton(selected = model == candidate, onClick = { model = candidate; prefs.edit().putString("model", model).apply() }); Text(candidate, modifier = Modifier.padding(top = 12.dp)) }
                         }
                     }
@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
                             error = ""
                             scope.launch {
                                 try {
-                                    val reply = withContext(Dispatchers.IO) { askGroq(key, model, messages.toList()) }
+                                    val reply = withContext(Dispatchers.IO) { askGroqAutomatic(key, model, messages.toList()) }
                                     messages.add(Message("assistant", reply))
                                     persist()
                                 } catch (e: Exception) { error = e.message ?: "Falha de conexão" }
@@ -123,4 +123,21 @@ private fun askGroq(key: String, model: String, messages: List<Message>): String
         if (code !in 200..299) throw IllegalStateException("Groq HTTP $code: " + response.take(250))
         return JSONObject(response).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
     } finally { conn.disconnect() }
+}
+
+private fun askGroqAutomatic(key: String, selected: String, messages: List<Message>): String {
+    if (selected != "Automático") return askGroq(key, selected, messages)
+    val prompt = messages.lastOrNull { it.role == "user" }?.content.orEmpty()
+    val complex = prompt.length > 450 || listOf("analise", "compare", "planeje", "código", "explique detalhadamente").any { prompt.contains(it, ignoreCase = true) }
+    val candidates = if (complex) listOf("openai/gpt-oss-20b", "llama-3.1-8b-instant") else listOf("llama-3.1-8b-instant", "openai/gpt-oss-20b")
+    var last: Exception? = null
+    for (candidate in candidates) {
+        try { return askGroq(key, candidate, messages) }
+        catch (e: Exception) {
+            last = e
+            val detail = e.message.orEmpty()
+            if (!listOf("HTTP 404", "HTTP 429", "HTTP 503", "HTTP 502", "HTTP 500").any { detail.contains(it) }) throw e
+        }
+    }
+    throw last ?: IllegalStateException("Nenhum modelo disponível")
 }
