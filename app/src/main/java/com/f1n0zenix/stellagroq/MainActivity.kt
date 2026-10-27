@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
             var draft by remember { mutableStateOf("") }
             var busy by remember { mutableStateOf(false) }
             var settings by remember { mutableStateOf(false) }
-            var model by remember { mutableStateOf(prefs.getString("model", "Automático") ?: "Automático") }
+            var model by remember { mutableStateOf((prefs.getString("model", "Automático") ?: "Automático").let { if (it == "llama-3.3-70b-versatile") "Automático" else it }) }
             var error by remember { mutableStateOf("") }
             val messages = remember { mutableStateListOf<Message>() }
             LaunchedEffect(Unit) {
@@ -60,14 +60,21 @@ class MainActivity : ComponentActivity() {
                         TextButton(onClick = { settings = !settings }) { Text(if (settings) "Voltar" else "Configurações") }
                     }
                     if (settings) {
-                        Text("Modelo de IA", color = Color.White)
+                        Text("Inteligência artificial", style = MaterialTheme.typography.titleLarge)
+                        Text("Selecione o modelo usado nas conversas", color = Color.LightGray)
                         listOf("Automático", "llama-3.1-8b-instant", "openai/gpt-oss-20b", "openai/gpt-oss-120b").forEach { candidate ->
-                            Row { RadioButton(selected = model == candidate, onClick = { model = candidate; prefs.edit().putString("model", model).apply() }); Text(candidate, modifier = Modifier.padding(top = 12.dp)) }
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                RadioButton(selected = model == candidate, onClick = { model = candidate; prefs.edit().putString("model", model).apply() })
+                                Text(candidate)
+                            }
                         }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    OutlinedTextField(value = key, onValueChange = { key = it; prefs.edit().putString("groq_key", it).apply() }, label = { Text("Chave API Groq") }, modifier = Modifier.fillMaxWidth(), singleLine = true, visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
-                    Spacer(Modifier.height(8.dp))
+                        Text("Conexão Groq", style = MaterialTheme.typography.titleMedium)
+                        OutlinedTextField(value = key, onValueChange = { key = it; prefs.edit().putString("groq_key", it).apply() },
+                            label = { Text("Chave API Groq") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation())
+                        Text("Histórico salvo neste aparelho. Requer internet para a IA.", color = Color.LightGray)
+                    } else {
+                        Spacer(Modifier.height(12.dp))
                     LazyColumn(modifier = Modifier.weight(1f)) {
                         items(messages.toList()) { msg ->
                             Card(Modifier.fillMaxWidth().padding(vertical = 4.dp), shape = RoundedCornerShape(12.dp)) {
@@ -78,6 +85,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                    if (key.isBlank()) Text("Abra Configurações e adicione sua chave Groq.", color = Color.LightGray)
                     if (error.isNotBlank()) Text(error, color = Color(0xFFFF8888))
                     Row {
                         OutlinedTextField(value = draft, onValueChange = { draft = it }, label = { Text("Digite sua mensagem") }, modifier = Modifier.weight(1f))
@@ -97,6 +105,7 @@ class MainActivity : ComponentActivity() {
                                 busy = false
                             }
                         }) { Text(if (busy) "..." else "Enviar") }
+                    }
                     }
                 }
             }
